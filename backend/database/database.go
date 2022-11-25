@@ -9,14 +9,19 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func Connect() *mongo.Client {
+var Client *mongo.Client
+var DB *mongo.Database
+var Users *mongo.Collection
+
+func Connect() {
 	MONGO_URI := "mongodb+srv://" + os.Getenv("DB_USER") + ":" + os.Getenv("DB_PASSWORD") + "@cluster0.iflqo.mongodb.net/?retryWrites=true&w=majority"
 	clientOptions := options.Client().ApplyURI(MONGO_URI)
 
-	client, err := mongo.Connect(context.TODO(),clientOptions)
+	Client, err := mongo.Connect(context.TODO(),clientOptions)
 	handleDbError(err)
 
-	return client
+	DB = Client.Database("Cinephile")
+	Users = DB.Collection("Users")
 }
 
 func handleDbError(err error) {
