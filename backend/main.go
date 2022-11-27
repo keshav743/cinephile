@@ -16,10 +16,12 @@ func main() {
 	app := fiber.New()
 	database.Connect()
 
+	// helpers.PushGenresToDB()
+
 	router.SetupRoutes(app)
 
 	fmt.Println("Server up and running at port 3000.")
-	
+
 	log.Fatal(app.Listen(":3000"))
 }
 

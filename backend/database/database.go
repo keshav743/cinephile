@@ -12,16 +12,22 @@ import (
 var Client *mongo.Client
 var DB *mongo.Database
 var Users *mongo.Collection
+var Movies *mongo.Collection
+var Genres *mongo.Collection
+var Lists *mongo.Collection
 
 func Connect() {
 	MONGO_URI := "mongodb+srv://" + os.Getenv("DB_USER") + ":" + os.Getenv("DB_PASSWORD") + "@cluster0.iflqo.mongodb.net/?retryWrites=true&w=majority"
 	clientOptions := options.Client().ApplyURI(MONGO_URI)
 
-	Client, err := mongo.Connect(context.TODO(),clientOptions)
+	Client, err := mongo.Connect(context.TODO(), clientOptions)
 	handleDbError(err)
 
 	DB = Client.Database("Cinephile")
 	Users = DB.Collection("Users")
+	Movies = DB.Collection("Movies")
+	Genres = DB.Collection("Genres")
+	Lists = DB.Collection("Lists")
 }
 
 func handleDbError(err error) {

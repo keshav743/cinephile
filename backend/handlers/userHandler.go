@@ -14,53 +14,47 @@ import (
 )
 
 //TODO - Try to add Cookie-Sessions
-//TODO - Handle Duplicate Emails - Signup route
-type AuthUser struct {
-    Email string `json:"email"`
-    Password string `json:"password"`
-	Username string `json:"username"`
-}
+//TODO - Handle Duplicate Emails and Duplicate Username - Signup route
 
 func Signup(c *fiber.Ctx) error {
-	user := new(AuthUser)
+	user := new(models.User)
 
-    if err := c.BodyParser(user); err != nil {
-        return err
-    }
+	if err := c.BodyParser(user); err != nil {
+		return err
+	}
 	hashedPassword, err := helpers.HashPassword(user.Password)
 	handleError(err)
 
-	newUser := models.User{
-		Username: user.Username,
-		Email: user.Email,
-		Password: string(hashedPassword),
-	}
+	user.Password = string(hashedPassword)
 
-	database.Users.InsertOne(context.TODO(),newUser)
+	result, err := database.Users.InsertOne(context.TODO(), user)
+	handleError(err)
 
-	token, err := helpers.GenerateJWT(user.Email,user.Username)
+	token, err := helpers.GenerateJWT(user.Email, user.Username)
 	handleError(err)
 
 	c.Response().SetStatusCode(201)
 	return c.JSON(
 		fiber.Map{
-			"status": "success", 
+			"status": "success",
 			"data": fiber.Map{
 				"username": user.Username,
-				"email": user.Email,
-				"token": token,
+				"email":    user.Email,
+				"id":       result.InsertedID,
+				"token":    token,
+				"message":  "User signup successfull",
 			},
 		})
-	}
+}
 
 func Signin(c *fiber.Ctx) error {
-	user := new(AuthUser)
+	user := new(models.User)
 	existingUser := new(models.User)
 
-    err := c.BodyParser(user)
+	err := c.BodyParser(user)
 	handleError(err)
 
-	err = database.Users.FindOne(context.TODO(),bson.M{"email": user.Email}).Decode(&existingUser)
+	err = database.Users.FindOne(context.TODO(), bson.M{"email": user.Email}).Decode(&existingUser)
 	handleNoDocFoundError(err)
 
 	passwordsMatched := helpers.ComparePasswords(user.Password, existingUser.Password)
@@ -68,27 +62,29 @@ func Signin(c *fiber.Ctx) error {
 		c.Response().SetStatusCode(400)
 		return c.JSON(
 			fiber.Map{
-				"status": "failure", 
+				"status":  "failure",
 				"message": "Incorrect credentials",
 			})
 	}
 
-	token, err := helpers.GenerateJWT(user.Email,user.Username)
+	token, err := helpers.GenerateJWT(user.Email, user.Username)
 	handleError(err)
 
 	c.Response().SetStatusCode(200)
 	return c.JSON(
 		fiber.Map{
-			"status": "success", 
+			"status": "success",
 			"data": fiber.Map{
 				"username": existingUser.Username,
-				"email": existingUser.Email,
-				"token": token,
+				"email":    existingUser.Email,
+				"id":       existingUser.ID,
+				"token":    token,
+				"message":  "User signin successfull",
 			},
 		})
 }
 
-func handleNoDocFoundError(err error){
+func handleNoDocFoundError(err error) {
 	if err != nil {
 		fmt.Println(err)
 		if err == mongo.ErrNoDocuments {
@@ -98,7 +94,7 @@ func handleNoDocFoundError(err error){
 	}
 }
 
-func handleError(err error){
+func handleError(err error) {
 	if err != nil {
 		fmt.Println(err)
 		return

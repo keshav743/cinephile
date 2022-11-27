@@ -6,8 +6,10 @@ import (
 	"github.com/keshav743/cinephile/routes"
 )
 
-func SetupRoutes(app *fiber.App){
-	api := app.Group("/api",logger.New())
+func SetupRoutes(app *fiber.App) {
+	api := app.Group("/api", logger.New())
 
 	routes.SetupUserRoutes(api)
+	routes.SetupMovieRoutes(api)
+	routes.SetupListRoutes(api)
 }
