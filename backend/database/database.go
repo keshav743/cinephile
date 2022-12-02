@@ -15,6 +15,8 @@ var Users *mongo.Collection
 var Movies *mongo.Collection
 var Genres *mongo.Collection
 var Lists *mongo.Collection
+var Reviews *mongo.Collection
+var Invitations *mongo.Collection
 
 func Connect() {
 	MONGO_URI := "mongodb+srv://" + os.Getenv("DB_USER") + ":" + os.Getenv("DB_PASSWORD") + "@cluster0.iflqo.mongodb.net/?retryWrites=true&w=majority"
@@ -28,6 +30,8 @@ func Connect() {
 	Movies = DB.Collection("Movies")
 	Genres = DB.Collection("Genres")
 	Lists = DB.Collection("Lists")
+	Reviews = DB.Collection("Reviews")
+	Invitations = DB.Collection("Invitations")
 }
 
 func handleDbError(err error) {

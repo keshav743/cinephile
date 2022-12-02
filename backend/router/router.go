@@ -12,4 +12,6 @@ func SetupRoutes(app *fiber.App) {
 	routes.SetupUserRoutes(api)
 	routes.SetupMovieRoutes(api)
 	routes.SetupListRoutes(api)
+	routes.SetupReviewRoutes(api)
+	routes.SetupInvitationRoutes(api)
 }

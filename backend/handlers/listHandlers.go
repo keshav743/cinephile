@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/keshav743/cinephile/database"
@@ -11,9 +12,14 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-//TODO - Write Middlewares for Checking whether a List exists and whether that List has public access
-//TODO - Write Middleware to Check if a movie exists
-
+// TODO - Write Middlewares for Checking whether a List exists and whether that List has public access
+// TODO - Write Middleware to Check if a movie exists
+// TODO - Write Middleware to Check if  the user is allowed to do the selected operation
+// TODO - Add/Remove Movie - Check access if private check access list
+// TODO - Grant/Revoke/Change Access - only by Curator
+// TODO - Public List - anyone can edit
+// TODO - Private List - Add friends manually to the private list
+// TODO - Both List should be publicly accessible
 type ListResponse struct {
 	List   primitive.ObjectID `json:"list"`
 	Movie  primitive.ObjectID `json:"movie"`
@@ -25,12 +31,17 @@ func CreateList(c *fiber.Ctx) error {
 
 	list := new(models.List)
 
-	err := c.BodyParser(list)
+	id, err := primitive.ObjectIDFromHex(c.Locals("id").(string))
 	handleError(err)
 
+	err = c.BodyParser(list)
+	handleError(err)
+
+	list.Curator = id
 	list.AccessList = make([]primitive.ObjectID, 0)
 	list.Reviews = make([]primitive.ObjectID, 0)
 	list.Movies = make([]primitive.ObjectID, 0)
+	list.CreatedAt = time.Now()
 
 	result, _ := database.Lists.InsertOne(context.TODO(), list)
 	list.ID = result.InsertedID.(primitive.ObjectID)
@@ -54,6 +65,33 @@ func AddMovieToList(c *fiber.Ctx) error {
 	result := database.Lists.FindOneAndUpdate(context.TODO(),
 		bson.M{"_id": addMovieToListResponse.List},
 		bson.M{"$push": bson.M{"movies": addMovieToListResponse.Movie}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After))
+
+	doc := bson.M{}
+
+	decodedErr := result.Decode(&doc)
+	handleError(decodedErr)
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data": fiber.Map{
+			"result":  doc,
+			"message": "Movie added to List.",
+		},
+	})
+
+}
+
+func RemoveMovieToList(c *fiber.Ctx) error {
+
+	removeMovieFromListResponse := new(ListResponse)
+
+	err := c.BodyParser(removeMovieFromListResponse)
+	handleError(err)
+
+	result := database.Lists.FindOneAndUpdate(context.TODO(),
+		bson.M{"_id": removeMovieFromListResponse.List},
+		bson.M{"$pull": bson.M{"movies": removeMovieFromListResponse.Movie}},
 		options.FindOneAndUpdate().SetReturnDocument(options.After))
 
 	doc := bson.M{}

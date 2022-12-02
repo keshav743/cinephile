@@ -10,6 +10,7 @@ import (
 	"github.com/keshav743/cinephile/helpers"
 	"github.com/keshav743/cinephile/models"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -26,14 +27,18 @@ func Signup(c *fiber.Ctx) error {
 	handleError(err)
 
 	user.Password = string(hashedPassword)
+	user.Friends = make([]primitive.ObjectID, 0)
 
 	result, err := database.Users.InsertOne(context.TODO(), user)
 	handleError(err)
 
-	token, err := helpers.GenerateJWT(user.Email, user.Username)
+	token, err := helpers.GenerateJWT(result.InsertedID.(primitive.ObjectID), user.Email, user.Username)
 	handleError(err)
 
+	user = helpers.FetchUserDetails(user, result.InsertedID.(primitive.ObjectID))
+
 	c.Response().SetStatusCode(201)
+
 	return c.JSON(
 		fiber.Map{
 			"status": "success",
@@ -41,6 +46,10 @@ func Signup(c *fiber.Ctx) error {
 				"username": user.Username,
 				"email":    user.Email,
 				"id":       result.InsertedID,
+				"watched":  user.Watched,
+				"liked":    user.Liked,
+				"reviews":  user.Reviews,
+				"friends":  user.FriendList,
 				"token":    token,
 				"message":  "User signup successfull",
 			},
@@ -67,17 +76,24 @@ func Signin(c *fiber.Ctx) error {
 			})
 	}
 
-	token, err := helpers.GenerateJWT(user.Email, user.Username)
+	token, err := helpers.GenerateJWT(existingUser.ID, user.Email, user.Username)
 	handleError(err)
+
+	user.Friends = existingUser.Friends
+	user = helpers.FetchUserDetails(user, existingUser.ID)
 
 	c.Response().SetStatusCode(200)
 	return c.JSON(
 		fiber.Map{
 			"status": "success",
 			"data": fiber.Map{
-				"username": existingUser.Username,
-				"email":    existingUser.Email,
+				"username": user.Username,
+				"email":    user.Email,
 				"id":       existingUser.ID,
+				"watched":  user.Watched,
+				"liked":    user.Liked,
+				"reviews":  user.Reviews,
+				"friends":  user.FriendList,
 				"token":    token,
 				"message":  "User signin successfull",
 			},

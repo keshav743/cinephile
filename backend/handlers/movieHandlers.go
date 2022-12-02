@@ -14,13 +14,56 @@ import (
 	"github.com/keshav743/cinephile/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 //TODO - Name from req.params has + when we need to send a req to TMDB
 
 type SearchResponse struct {
-	Movies []models.Movie `json:"results"`
+	Movies []models.Movie     `json:"results"`
+	User   primitive.ObjectID `json:"user"`
+	Movie  primitive.ObjectID `json:"movie"`
 }
+
+var genrePopulate bson.M = bson.M{"$lookup": bson.M{
+	"from":         "Genres",
+	"localField":   "genre",
+	"foreignField": "_id",
+	"as":           "genres",
+}}
+
+var watchedPopulate bson.M = bson.M{"$lookup": bson.M{
+	"from":         "Users",
+	"localField":   "watched",
+	"foreignField": "_id",
+	"as":           "watched",
+}}
+
+var likedPopulate bson.M = bson.M{"$lookup": bson.M{
+	"from":         "Users",
+	"localField":   "liked",
+	"foreignField": "_id",
+	"as":           "liked",
+}}
+
+var aggProject bson.M = bson.M{"$project": bson.M{
+	"title":            1,
+	"overview":         1,
+	"imageUrl":         1,
+	"release":          1,
+	"language":         1,
+	"popularity":       1,
+	"id":               1,
+	"tmdbId":           1,
+	"genre":            1,
+	"watched.username": 1,
+	"watched.email":    1,
+	"watched._id":      1,
+	"liked.email":      1,
+	"liked._id":        1,
+	"liked.username":   1,
+	"reviews":          1,
+}}
 
 var TMDBMovieSearchEndpint string = "https://api.themoviedb.org/3/search/movie?api_key=c8af2e4fcd4bf5d99fcb9bfa901fc684"
 var wg sync.WaitGroup
@@ -47,6 +90,8 @@ func GetMovieByCriteria(c *fiber.Ctx) error {
 		go func(movie models.Movie) {
 			movie.Ratings = 0
 			movie.Reviews = make([]primitive.ObjectID, 0)
+			movie.Liked = make([]primitive.ObjectID, 0)
+			movie.Watched = make([]primitive.ObjectID, 0)
 			cnt, err := database.Movies.CountDocuments(context.TODO(), bson.M{"tmdbId": movie.TMDB_ID})
 			handleError(err)
 			if cnt == 0 {
@@ -67,25 +112,6 @@ func GetMovieByCriteria(c *fiber.Ctx) error {
 		aggSkip = bson.M{"$skip": int64(int(math.Abs(float64(page-1))) * 20)}
 		aggLimit = bson.M{"$limit": 20}
 	}
-
-	genrePopulate := bson.M{"$lookup": bson.M{
-		"from":         "Genres",
-		"localField":   "genre",
-		"foreignField": "_id",
-		"as":           "genres",
-	}}
-
-	aggProject := bson.M{"$project": bson.M{
-		"title":      1,
-		"overview":   1,
-		"imageUrl":   1,
-		"release":    1,
-		"language":   1,
-		"popularity": 1,
-		"id":         1,
-		"tmdb_id":    1,
-		"genres":     1,
-	}}
 
 	cursor, err := database.Movies.Aggregate(context.TODO(), []bson.M{
 		aggSearch, aggSkip, aggLimit, genrePopulate, aggProject,
@@ -114,7 +140,7 @@ func GetMovieById(c *fiber.Ctx) error {
 	aggSearch := bson.M{"$match": bson.M{"_id": movieId}}
 
 	cursor, _ := database.Movies.Aggregate(context.TODO(), []bson.M{
-		aggSearch,
+		aggSearch, genrePopulate, watchedPopulate, likedPopulate, aggProject,
 	})
 
 	err = cursor.All(context.TODO(), &movie)
@@ -125,6 +151,122 @@ func GetMovieById(c *fiber.Ctx) error {
 		"data": fiber.Map{
 			"movie":   movie,
 			"message": "Requested movie has been found in DB.",
+		},
+	})
+}
+
+func ToggleWatched(c *fiber.Ctx) error {
+
+	toggleWatchedResponse := new(SearchResponse)
+	movie := new(models.Movie)
+
+	id, err := primitive.ObjectIDFromHex(c.Locals("id").(string))
+	handleError(err)
+
+	err = c.BodyParser(&toggleWatchedResponse)
+	handleError(err)
+
+	toggleWatchedResponse.User = id
+
+	err = database.Movies.FindOne(context.TODO(), bson.M{"_id": toggleWatchedResponse.Movie}).Decode(&movie)
+	handleError(err)
+
+	for i := 0; i < len(movie.Watched); i++ {
+		if movie.Watched[i] == toggleWatchedResponse.User {
+
+			result := database.Movies.FindOneAndUpdate(context.TODO(),
+				bson.M{"_id": toggleWatchedResponse.Movie},
+				bson.M{"$pull": bson.M{"watched": toggleWatchedResponse.User}},
+				options.FindOneAndUpdate().SetReturnDocument(options.After))
+
+			doc := bson.M{}
+
+			decodedErr := result.Decode(&doc)
+			handleError(decodedErr)
+
+			return c.JSON(fiber.Map{
+				"status": "success",
+				"data": fiber.Map{
+					"movie":   doc,
+					"message": "Removed as watched.",
+				},
+			})
+		}
+	}
+
+	result := database.Movies.FindOneAndUpdate(context.TODO(),
+		bson.M{"_id": toggleWatchedResponse.Movie},
+		bson.M{"$push": bson.M{"watched": toggleWatchedResponse.User}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After))
+
+	doc := bson.M{}
+
+	decodedErr := result.Decode(&doc)
+	handleError(decodedErr)
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data": fiber.Map{
+			"movie":   doc,
+			"message": "Marked as watched.",
+		},
+	})
+}
+
+func ToggleLiked(c *fiber.Ctx) error {
+
+	toggleLikedResponse := new(SearchResponse)
+	movie := new(models.Movie)
+
+	id, err := primitive.ObjectIDFromHex(c.Locals("id").(string))
+	handleError(err)
+
+	err = c.BodyParser(&toggleLikedResponse)
+	handleError(err)
+
+	toggleLikedResponse.User = id
+
+	err = database.Movies.FindOne(context.TODO(), bson.M{"_id": toggleLikedResponse.Movie}).Decode(&movie)
+	handleError(err)
+
+	for i := 0; i < len(movie.Liked); i++ {
+		if movie.Liked[i] == toggleLikedResponse.User {
+
+			result := database.Movies.FindOneAndUpdate(context.TODO(),
+				bson.M{"_id": toggleLikedResponse.Movie},
+				bson.M{"$pull": bson.M{"liked": toggleLikedResponse.User}},
+				options.FindOneAndUpdate().SetReturnDocument(options.After))
+
+			doc := bson.M{}
+
+			decodedErr := result.Decode(&doc)
+			handleError(decodedErr)
+
+			return c.JSON(fiber.Map{
+				"status": "success",
+				"data": fiber.Map{
+					"movie":   doc,
+					"message": "Removed from liked.",
+				},
+			})
+		}
+	}
+
+	result := database.Movies.FindOneAndUpdate(context.TODO(),
+		bson.M{"_id": toggleLikedResponse.Movie},
+		bson.M{"$push": bson.M{"liked": toggleLikedResponse.User}},
+		options.FindOneAndUpdate().SetReturnDocument(options.After))
+
+	doc := bson.M{}
+
+	decodedErr := result.Decode(&doc)
+	handleError(decodedErr)
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data": fiber.Map{
+			"movie":   doc,
+			"message": "Marked as liked.",
 		},
 	})
 }
